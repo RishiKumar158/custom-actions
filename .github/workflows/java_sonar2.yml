@@ -1,0 +1,61 @@
+name: Sonarqube analysis
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sonar-online
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonar-scan:
+    runs-on: self-hosted
+    steps:
+      - name: Get Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Clear Sonarqube Cache directories
+        run: |
+          echo "Clearing all sonarqube cache directories"
+          rm -rf ~/.sonar/cache
+          rm -rf /opt/sonarqube/.sonar/cache
+          rm -rf ~/sonarqube/.sonar/cache
+          rm -rf ~/.sonar
+          rm -rf /opt/sonarqube/.sonar
+          rm -rf ~/sonarqube/.sonar
+          find /tmp -name "*sonar*" -type f -delete 2>/dev/null || true
+          find /tmp -name "*scanner*" -type f -delete 2>/dev/null || true
+          rm -rf ~/.m2/repository/org/sonarsource/scanner/maven/sonar-maven-plugin
+          echo "Cache cleanup completed"
+      - name: Build with Java 8
+        env:
+          JAVA_HOME: ${{ vars.JAVA_8_PATH }}
+        run: |
+          export PATH=$JAVA_HOME/bin:$PATH
+          echo "output of java version"
+          java -version
+          echo "maven version"
+          mvn -version
+          mvn -B clean install -DskipTests=true
+      
+      - name: Retrieve Token from Keeper
+        id: ksecrets
+        uses: Keeper-Security/ksm-action@master
+        with:
+          keeper-secret-config: ${{ secrets.KSM_CONFIG }}
+          secrets: |-
+            keeper://x1FGOyYTg_vCoDz_Ikw5RA/custom_field/Token > SONAR_TOKEN
+      
+      - name: Sonarqube Scan using Maven Sonar
+        env: 
+          JAVA_HOME: ${{ vars.JAVA_17_PATH }}
+          SONAR_TOKEN: ${{ steps.ksecrets.outputs.SONAR_TOKEN }}
+        run: |
+          export PATH=$JAVA_HOME/bin:$PATH
+          mvn -B sonar:sonar -Pui \
+            -Dsonar.projectKey=atge-org_wu-facportal-quick-links_61bd654f-39e0-45eb-a8ae-6f06157ea0fe \
+            -Dsonar.projectName=wu-facportal-quick-links \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.java.binaries=target/classes
