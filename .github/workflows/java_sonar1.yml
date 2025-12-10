@@ -1,0 +1,53 @@
+name: Sonarqube Analysis
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sonar-opt
+
+jobs:
+  sonar-analysis:
+    runs-on: self-hosted
+
+    steps:
+      - name: Get Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      
+      - name: Clear Sonarqube Cache
+        run: |
+          echo "Clearing all SonarQube cache directories..."
+          rm -rf ~/.sonar/cache
+          rm -rf /opt/sonarqube/.sonar/cache
+          rm -rf ~/sonarqube/.sonar/cache
+          rm -rf ~/.sonar
+          rm -rf /opt/sonarqube/.sonar
+          rm -rf ~/sonarqube/.sonar
+          find /tmp -name "*sonar*" -type f -delete 2>/dev/null || true
+          find /tmp -name "*scanner*" -type f -delete 2>/dev/null || true
+          rm -rf ~/.m2/repository/org/sonarsource/scanner/maven/sonar-maven-plugin
+          echo "Cache cleared."
+
+      - name: Retrieve Token from Keeper
+        id: ksecrets
+        uses: Keeper-Security/ksm-action@master
+        with:
+          keeper-secret-config: ${{ secrets.KSM_CONFIG }}
+          secrets: |-
+            keeper://x1FGOyYTg_vCoDz_Ikw5RA/custom_field/Token > SONAR_TOKEN
+
+      - name: Sonarqube scan
+        env:
+          JAVA_HOME: ${{ vars.JAVA_17_PATH }}
+          SONAR_TOKEN: ${{ steps.ksecrets.outputs.SONAR_TOKEN }}
+        run: |
+          export PATH=$JAVA_HOME/bin:$PATH
+          java -version
+          mvn -B clean verify sonar:sonar \
+            -Dsonar.projectKey=DeVryEducationGroup_TestAuto-Walden_9a725dd4-6b4f-4722-b440-2ae0a036d024 \
+            -Dsonar.projectName="TestAuto-Walden" \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.java.binaries=target/classes
+
